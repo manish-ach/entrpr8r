@@ -30,7 +30,7 @@ impl Interpreter {
 
         if self.had_error {
             self.error(0, "none for now".to_string());
-            std::process::exit(1);
+            std::process::exit(65);
         }
 
         Ok(())
