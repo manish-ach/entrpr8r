@@ -1,4 +1,5 @@
 mod interpreter;
+mod token;
 mod token_type;
 
 use interpreter::Interpreter;
