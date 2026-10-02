@@ -29,6 +29,7 @@ impl Interpreter {
         self.run(&source);
 
         if self.had_error {
+            self.error(0, "none for now".to_string());
             std::process::exit(1);
         }
 
