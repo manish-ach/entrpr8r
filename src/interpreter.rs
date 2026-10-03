@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 
+use crate::scanner::{self, Scanner};
+
 fn read_line(prompt: &str) -> String {
     print!("{prompt}");
     io::stdout().flush().unwrap();
@@ -19,7 +21,7 @@ impl Interpreter {
         Self { had_error: false }
     }
 
-    pub fn error(&mut self, line: u32, msg: String) {
+    pub fn error(&mut self, line: usize, msg: String) {
         eprintln!("[line {line}] Error: {msg}");
         self.had_error = true;
     }
@@ -52,7 +54,8 @@ impl Interpreter {
     }
 
     fn run(&mut self, source: &str) {
-        let tokens: Vec<String> = source.split_whitespace().map(str::to_owned).collect();
+        let mut scanner = Scanner::new(source.to_owned());
+        let tokens = scanner.scan_tokens(self);
 
         for token in tokens {
             println!("{token}");

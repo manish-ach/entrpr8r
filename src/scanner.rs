@@ -1,6 +1,7 @@
 use crate::{
+    interpreter::Interpreter,
     token::{Literal, Token},
-    token_type::TokenType,
+    token_type::{self, TokenType},
 };
 
 pub struct Scanner {
@@ -26,10 +27,10 @@ impl Scanner {
         self.current >= self.source.len()
     }
 
-    pub fn scan_tokens(&mut self) -> &[Token] {
+    pub fn scan_tokens(&mut self, interpreter: &mut Interpreter) -> &[Token] {
         while !self.is_at_end() {
             self.start = self.current;
-            self.scan_token();
+            self.scan_token(interpreter);
         }
         self.tokens
             .push(Token::new(TokenType::Eof, String::new(), None, self.line));
@@ -37,7 +38,7 @@ impl Scanner {
         &self.tokens
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self, interpreter: &mut Interpreter) {
         let ch = self.advance();
 
         match ch {
@@ -51,8 +52,57 @@ impl Scanner {
             '+' => self.add_token(TokenType::Plus),
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
+
+            '!' => {
+                let token_type = if self.match_char('=') {
+                    TokenType::BangEqual
+                } else {
+                    TokenType::Bang
+                };
+                self.add_token(token_type);
+            }
+            '=' => {
+                let token_type = if self.match_char('=') {
+                    TokenType::EqualEqual
+                } else {
+                    TokenType::Equal
+                };
+                self.add_token(token_type);
+            }
+            '<' => {
+                let token_type = if self.match_char('=') {
+                    TokenType::LessEqual
+                } else {
+                    TokenType::Equal
+                };
+                self.add_token(token_type);
+            }
+            '>' => {
+                let token_type = if self.match_char('=') {
+                    TokenType::GreaterEqual
+                } else {
+                    TokenType::Greater
+                };
+                self.add_token(token_type);
+            }
+
+            '/' => {
+                if self.match_char('/') {
+                    while self.peek() != '\n' && !self.is_at_end() {
+                        self.advance();
+                    }
+                } else {
+                    self.add_token(TokenType::Slash);
+                }
+            }
+
+            ' ' | '\r' | '\t' => {
+                // ignore whitespace
+            }
+            '\n' => self.line += 1,
+
             _ => {
-                // Handle other characters or report an error.
+                interpreter.error(self.line, format!("Unexpected character '{ch}'"));
             }
         }
     }
@@ -77,13 +127,27 @@ impl Scanner {
             line: self.line,
         });
     }
+
+    fn peek(&self) -> char {
+        self.source[self.current..].chars().next().unwrap_or('\0')
+    }
+
+    fn match_char(&mut self, expected: char) -> bool {
+        if self.is_at_end() || self.peek() != expected {
+            return false;
+        }
+
+        self.advance();
+        true
+    }
 }
 
 #[test]
 fn scans_single_character_tokens() {
     let mut scanner = Scanner::new("()+*".to_string());
+    let mut interpreter = Interpreter { had_error: false };
 
-    let tokens = scanner.scan_tokens();
+    let tokens = scanner.scan_tokens(&mut interpreter);
 
     assert_eq!(tokens.len(), 5); // 4 tokens + EOF
     assert_eq!(tokens[0].token_type, TokenType::LeftParen);
