@@ -1,3 +1,5 @@
+use std::{collections::HashMap, thread::current};
+
 use crate::{
     interpreter::Interpreter,
     token::{Literal, Token},
@@ -10,6 +12,7 @@ pub struct Scanner {
     start: usize,
     current: usize,
     line: usize,
+    keywords: HashMap<&'static str, TokenType>,
 }
 
 impl Scanner {
@@ -19,8 +22,30 @@ impl Scanner {
             tokens: Vec::new(),
             start: 0,
             current: 0,
-            line: 0,
+            line: 1,
+            keywords: Self::populate_hashmap(),
         }
+    }
+
+    fn populate_hashmap() -> HashMap<&'static str, TokenType> {
+        let mut keywords = HashMap::new();
+        keywords.insert("and", TokenType::And);
+        keywords.insert("class", TokenType::Class);
+        keywords.insert("else", TokenType::Else);
+        keywords.insert("false", TokenType::False);
+        keywords.insert("for", TokenType::For);
+        keywords.insert("fun", TokenType::Fun);
+        keywords.insert("if", TokenType::If);
+        keywords.insert("nil", TokenType::Nil);
+        keywords.insert("or", TokenType::Or);
+        keywords.insert("print", TokenType::Print);
+        keywords.insert("return", TokenType::Return);
+        keywords.insert("super", TokenType::Super);
+        keywords.insert("this", TokenType::This);
+        keywords.insert("true", TokenType::True);
+        keywords.insert("var", TokenType::Var);
+        keywords.insert("while", TokenType::While);
+        keywords
     }
 
     pub fn is_at_end(&self) -> bool {
@@ -73,7 +98,7 @@ impl Scanner {
                 let token_type = if self.match_char('=') {
                     TokenType::LessEqual
                 } else {
-                    TokenType::Equal
+                    TokenType::Less
                 };
                 self.add_token(token_type);
             }
@@ -101,8 +126,16 @@ impl Scanner {
             }
             '\n' => self.line += 1,
 
+            '"' => self.string(interpreter),
+
             _ => {
-                interpreter.error(self.line, format!("Unexpected character '{ch}'"));
+                if ch.is_ascii_digit() {
+                    self.number();
+                } else if ch.is_ascii_alphabetic() || ch == '_' {
+                    self.identifier();
+                } else {
+                    interpreter.error(self.line, format!("Unexpected character '{ch}'"));
+                }
             }
         }
     }
@@ -132,6 +165,10 @@ impl Scanner {
         self.source[self.current..].chars().next().unwrap_or('\0')
     }
 
+    fn peek_next(&self) -> char {
+        self.source[self.current..].chars().nth(1).unwrap_or('\0')
+    }
+
     fn match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() || self.peek() != expected {
             return false;
@@ -139,6 +176,57 @@ impl Scanner {
 
         self.advance();
         true
+    }
+
+    fn string(&mut self, interpreter: &mut Interpreter) {
+        while self.peek() != '"' && !self.is_at_end() {
+            let _ = self.advance();
+        }
+
+        if self.is_at_end() {
+            interpreter.error(self.line, format!("Incomplete string literal"));
+            return;
+        }
+
+        let _ = self.advance();
+
+        let value = self.source[(self.start + 1)..(self.current - 1)].to_owned();
+
+        self.add_token_with_literal(TokenType::String, Some(Literal::String(value)));
+    }
+
+    fn number(&mut self) {
+        loop {
+            if self.peek().is_ascii_digit() {
+                self.advance();
+            } else if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.add_token_with_literal(
+            TokenType::Number,
+            Some(Literal::Number(
+                self.source[self.start..self.current].parse().unwrap(),
+            )),
+        );
+    }
+
+    fn identifier(&mut self) {
+        while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
+            self.advance();
+        }
+
+        let text = &self.source[self.start..self.current];
+        let token_type = self
+            .keywords
+            .get(text)
+            .copied()
+            .unwrap_or(TokenType::Identifier);
+
+        self.add_token(token_type);
     }
 }
 
