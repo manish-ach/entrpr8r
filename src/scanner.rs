@@ -11,6 +11,7 @@ pub struct Scanner {
     tokens: Vec<Token>,
     start: usize,
     current: usize,
+    start_line: usize,
     line: usize,
     keywords: HashMap<&'static str, TokenType>,
 }
@@ -22,6 +23,7 @@ impl Scanner {
             tokens: Vec::new(),
             start: 0,
             current: 0,
+            start_line: 1,
             line: 1,
             keywords: Self::populate_hashmap(),
         }
@@ -130,7 +132,7 @@ impl Scanner {
 
             _ => {
                 if ch.is_ascii_digit() {
-                    self.number(interpreter);
+                    self.number();
                 } else if ch.is_ascii_alphabetic() || ch == '_' {
                     self.identifier();
                 } else {
@@ -195,21 +197,14 @@ impl Scanner {
         self.add_token_with_literal(TokenType::String, Some(Literal::String(value)));
     }
 
-    fn number(&mut self, interpreter: &mut Interpreter) {
-        let mut decimal_flag = false;
-        loop {
-            if self.peek().is_ascii_digit() {
+    fn number(&mut self) {
+        while self.peek().is_ascii_digit() {
+            self.advance();
+        }
+        if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+            self.advance();
+            while self.peek().is_ascii_digit() {
                 self.advance();
-            } else if self.peek() == '.' && self.peek_next().is_ascii_digit() {
-                if decimal_flag == false {
-                    self.advance();
-                } else {
-                    interpreter.error(self.line, format!("Multiple Floating point decimal"));
-                    return;
-                }
-                decimal_flag = true;
-            } else {
-                break;
             }
         }
 
@@ -239,7 +234,7 @@ impl Scanner {
 
 #[cfg(test)]
 mod test {
-    use crate::{interpreter, scanner};
+    use crate::{interpreter, scanner, token};
 
     use super::*;
 
@@ -252,6 +247,18 @@ mod test {
             .iter()
             .map(|token| token.token_type)
             .collect()
+    }
+
+    fn return_lines(sources: &str, n: usize) -> usize {
+        let mut scanner = Scanner::new(sources.to_string());
+        let mut interpreter = Interpreter::new();
+
+        scanner
+            .scan_tokens(&mut interpreter)
+            .iter()
+            .nth(n)
+            .unwrap()
+            .line
     }
 
     #[test]
@@ -323,7 +330,43 @@ mod test {
         assert_eq!(token_types("true"), vec![TokenType::True, TokenType::Eof]);
         assert_eq!(token_types("var"), vec![TokenType::Var, TokenType::Eof]);
         assert_eq!(token_types("while"), vec![TokenType::While, TokenType::Eof]);
+    }
 
+    #[test]
+    fn scan_numbers() {
+        assert_eq!(
+            token_types("9 10"),
+            vec![TokenType::Number, TokenType::Number, TokenType::Eof]
+        );
+
+        assert_eq!(
+            token_types("9."),
+            vec![TokenType::Number, TokenType::Dot, TokenType::Eof]
+        );
+
+        assert_eq!(
+            token_types("9.9.9 10.11",),
+            vec![
+                TokenType::Number,
+                TokenType::Dot,
+                TokenType::Number,
+                TokenType::Number,
+                TokenType::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_strings() {
+        assert_eq!(token_types(""), vec![TokenType::Eof]);
+        assert_eq!(
+            token_types(r#""""#),
+            vec![TokenType::String, TokenType::Eof]
+        );
+        assert_eq!(
+            token_types(r#""and or""#),
+            vec![TokenType::String, TokenType::Eof]
+        );
         assert_eq!(
             token_types(r#""9 or" and blabla"#),
             vec![
@@ -336,15 +379,9 @@ mod test {
     }
 
     #[test]
-    fn scan_numbers() {
-        assert_eq!(
-            token_types("9 10"),
-            vec![TokenType::Number, TokenType::Number, TokenType::Eof]
-        );
-
-        assert_eq!(
-            token_types("9.9.9 10.11",),
-            vec![TokenType::Number, TokenType::Number, TokenType::Eof]
-        );
+    fn test_lines() {
+        assert_eq!(return_lines("and \n ! *", 0), 1);
+        assert_eq!(return_lines("and \n ! *", 1), 2);
+        assert_eq!(return_lines("and \n ! *", 2), 2);
     }
 }
