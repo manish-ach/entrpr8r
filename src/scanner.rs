@@ -57,6 +57,7 @@ impl Scanner {
     pub fn scan_tokens(&mut self, interpreter: &mut Interpreter) -> &[Token] {
         while !self.is_at_end() {
             self.start = self.current;
+            self.start_line = self.line;
             self.scan_token(interpreter);
         }
         self.tokens
@@ -159,7 +160,7 @@ impl Scanner {
             token_type,
             lexeme,
             literal,
-            line: self.line,
+            line: self.start_line,
         });
     }
 
@@ -182,6 +183,9 @@ impl Scanner {
 
     fn string(&mut self, interpreter: &mut Interpreter) {
         while self.peek() != '"' && !self.is_at_end() {
+            if self.peek() == '\n' {
+                self.line += 1;
+            }
             let _ = self.advance();
         }
 
@@ -383,5 +387,35 @@ mod test {
         assert_eq!(return_lines("and \n ! *", 0), 1);
         assert_eq!(return_lines("and \n ! *", 1), 2);
         assert_eq!(return_lines("and \n ! *", 2), 2);
+        assert_eq!(
+            return_lines(
+                r#"and "
+            "! *"#,
+                2
+            ),
+            2
+        );
+        assert_eq!(return_lines("+\n", 1), 2);
+    }
+
+    fn interpreter_error(sources: &str, interpreter: &mut Interpreter) {
+        let mut scanner = Scanner::new(sources.to_string());
+        scanner.scan_tokens(interpreter);
+    }
+
+    #[test]
+    fn test_error() {
+        let source1 = r#""a"#;
+        let source2 = "💀";
+
+        let mut interpreter1 = Interpreter::new();
+        assert!(!interpreter1.had_error);
+        interpreter_error(source1, &mut interpreter1);
+        assert!(interpreter1.had_error);
+
+        let mut interpreter2 = Interpreter::new();
+        assert!(!interpreter2.had_error);
+        interpreter_error(source2, &mut interpreter2);
+        assert!(interpreter2.had_error);
     }
 }
