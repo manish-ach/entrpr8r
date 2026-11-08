@@ -1,9 +1,9 @@
 use std::{collections::HashMap, thread::current};
 
 use crate::{
-    interpreter::Interpreter,
+    interpreter::{self, Interpreter},
     token::{Literal, Token},
-    token_type::{self, TokenType},
+    token_type::TokenType,
 };
 
 pub struct Scanner {
@@ -130,7 +130,7 @@ impl Scanner {
 
             _ => {
                 if ch.is_ascii_digit() {
-                    self.number();
+                    self.number(interpreter);
                 } else if ch.is_ascii_alphabetic() || ch == '_' {
                     self.identifier();
                 } else {
@@ -195,12 +195,19 @@ impl Scanner {
         self.add_token_with_literal(TokenType::String, Some(Literal::String(value)));
     }
 
-    fn number(&mut self) {
+    fn number(&mut self, interpreter: &mut Interpreter) {
+        let mut decimal_flag = false;
         loop {
             if self.peek().is_ascii_digit() {
                 self.advance();
             } else if self.peek() == '.' && self.peek_next().is_ascii_digit() {
-                self.advance();
+                if decimal_flag == false {
+                    self.advance();
+                } else {
+                    interpreter.error(self.line, format!("Multiple Floating point decimal"));
+                    return;
+                }
+                decimal_flag = true;
             } else {
                 break;
             }
@@ -230,16 +237,114 @@ impl Scanner {
     }
 }
 
-#[test]
-fn scans_single_character_tokens() {
-    let mut scanner = Scanner::new("()+*".to_string());
-    let mut interpreter = Interpreter { had_error: false };
+#[cfg(test)]
+mod test {
+    use crate::{interpreter, scanner};
 
-    let tokens = scanner.scan_tokens(&mut interpreter);
+    use super::*;
 
-    assert_eq!(tokens.len(), 5); // 4 tokens + EOF
-    assert_eq!(tokens[0].token_type, TokenType::LeftParen);
-    assert_eq!(tokens[1].token_type, TokenType::RightParen);
-    assert_eq!(tokens[2].token_type, TokenType::Plus);
-    assert_eq!(tokens[3].token_type, TokenType::Star);
+    fn token_types(sources: &str) -> Vec<TokenType> {
+        let mut scanner = Scanner::new(sources.to_string());
+        let mut interpreter = Interpreter::new();
+
+        scanner
+            .scan_tokens(&mut interpreter)
+            .iter()
+            .map(|token| token.token_type)
+            .collect()
+    }
+
+    #[test]
+    fn scan_operators() {
+        assert_eq!(
+            token_types("( ) { } ; . , + - * / ! = < >"),
+            vec![
+                TokenType::LeftParen,
+                TokenType::RightParen,
+                TokenType::LeftBrace,
+                TokenType::RightBrace,
+                TokenType::Semicolon,
+                TokenType::Dot,
+                TokenType::Comma,
+                TokenType::Plus,
+                TokenType::Minus,
+                TokenType::Star,
+                TokenType::Slash,
+                TokenType::Bang,
+                TokenType::Equal,
+                TokenType::Less,
+                TokenType::Greater,
+                TokenType::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn scans_two_character_operator() {
+        assert_eq!(
+            token_types("!= == >= <="),
+            vec![
+                TokenType::BangEqual,
+                TokenType::EqualEqual,
+                TokenType::GreaterEqual,
+                TokenType::LessEqual,
+                TokenType::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn verify_comments() {
+        assert_eq!(token_types("// + ="), vec![TokenType::Eof]);
+        assert_eq!(
+            token_types("// \n +"),
+            vec![TokenType::Plus, TokenType::Eof]
+        );
+    }
+
+    #[test]
+    fn scan_keywords_and_identifiers() {
+        assert_eq!(token_types("and"), vec![TokenType::And, TokenType::Eof]);
+        assert_eq!(token_types("class"), vec![TokenType::Class, TokenType::Eof]);
+        assert_eq!(token_types("else"), vec![TokenType::Else, TokenType::Eof]);
+        assert_eq!(token_types("false"), vec![TokenType::False, TokenType::Eof]);
+        assert_eq!(token_types("for"), vec![TokenType::For, TokenType::Eof]);
+        assert_eq!(token_types("fun"), vec![TokenType::Fun, TokenType::Eof]);
+        assert_eq!(token_types("if"), vec![TokenType::If, TokenType::Eof]);
+        assert_eq!(token_types("nil"), vec![TokenType::Nil, TokenType::Eof]);
+        assert_eq!(token_types("or"), vec![TokenType::Or, TokenType::Eof]);
+        assert_eq!(token_types("print"), vec![TokenType::Print, TokenType::Eof]);
+        assert_eq!(
+            token_types("return"),
+            vec![TokenType::Return, TokenType::Eof]
+        );
+        assert_eq!(token_types("super"), vec![TokenType::Super, TokenType::Eof]);
+        assert_eq!(token_types("this"), vec![TokenType::This, TokenType::Eof]);
+        assert_eq!(token_types("true"), vec![TokenType::True, TokenType::Eof]);
+        assert_eq!(token_types("var"), vec![TokenType::Var, TokenType::Eof]);
+        assert_eq!(token_types("while"), vec![TokenType::While, TokenType::Eof]);
+
+        assert_eq!(
+            token_types(r#""9 or" and blabla"#),
+            vec![
+                TokenType::String,
+                TokenType::And,
+                TokenType::Identifier,
+                TokenType::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn scan_numbers() {
+        assert_eq!(
+            token_types("9 10"),
+            vec![TokenType::Number, TokenType::Number, TokenType::Eof]
+        );
+
+        assert_eq!(
+            token_types("9.9.9 10.11",),
+            vec![TokenType::Number, TokenType::Number, TokenType::Eof]
+        );
+    }
 }

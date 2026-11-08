@@ -1,15 +1,17 @@
 use std::io::{self, Write};
 
-use crate::scanner::{self, Scanner};
+use crate::scanner::Scanner;
 
-fn read_line(prompt: &str) -> String {
+fn read_line(prompt: &str) -> Option<String> {
     print!("{prompt}");
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    if io::stdin().read_line(&mut input).unwrap() == 0 {
+        return None;
+    }
 
-    input.trim().to_owned()
+    Some(input.trim().to_owned())
 }
 
 pub struct Interpreter {
@@ -40,7 +42,7 @@ impl Interpreter {
 
     pub fn run_interactively(&mut self) {
         loop {
-            let source = read_line(">");
+            let Some(source) = read_line(">") else { break };
             if source.is_empty() {
                 continue;
             }
